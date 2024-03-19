@@ -1,0 +1,62 @@
+import json
+import zcatalyst_sdk
+import logging
+import requests
+from flask import Request, make_response, jsonify
+
+TABLENAME = ["HEADLINES", "BUSINESS", "ENTERTAINMENT", "HEALTH", "SCIENCE", "SPORTS", "TECHNOLOGY"]
+COUNTRY = "IN"
+APIKEY = "<<YOUR_API_KEY>>"
+HOST = "https://newsapi.org"
+
+
+def handler(cron_details, context):
+    try:
+        logger = logging.getLogger()
+        app = zcatalyst_sdk.initialize()
+        for i in range(len(TABLENAME)):
+            url = f'{HOST}/v2/top-headlines?country={COUNTRY}&apiKey={APIKEY}'
+            if (TABLENAME[i] == 'HEADLINES'): 
+                response = requests.get(url)
+            else:
+                params = {"category":TABLENAME[i]}
+                response = requests.get(url,params=params)
+            if response.status_code == 200:
+                data = response.json()
+                responseArray = data['articles']
+                pushNewstoDatastore(responseArray,i)
+            else:
+                logger.error("Error Fetching data from News API")
+        logger.info("News Updated")
+        context.close_with_success()
+    except Exception as err:
+        logger.error(err)
+        context.close_with_failure()
+
+def pushNewstoDatastore(responseArray,length):
+    logger = logging.getLogger()
+    app = zcatalyst_sdk.initialize()
+    Zcql = app.zcql()
+    Datastore = app.datastore()
+    tablename = Datastore.table(TABLENAME[length])
+    query = f"Select ROWID from {TABLENAME[length]}"
+    response = Zcql.execute_query(query)
+    tablerows = [sub[TABLENAME[length]] for sub in response ]
+    rowid_list = [sub['ROWID'] for sub in tablerows ]
+    title = [sub['title'] for sub in responseArray ]
+    url = [sub['url'] for sub in responseArray] 
+    for i in range(len(responseArray)):
+        row_data = [{"title":title[i],"url":url[i]}]
+        if len(response)>0:
+            rowid = {"ROWID":rowid_list[i]}
+            row_data.append(rowid)
+            action = "Update"
+            tablename.update_rows(row_data)
+        else:
+            row_data = [{"title":title[i],"url":url[i]}]
+            action = "Insert"
+            tablename.insert_rows(row_data)
+    if action == "Update":
+        logger.info(f"{TABLENAME[length]} Table updated with current News")
+    elif action == "Insert":
+        logger.info(f"{TABLENAME[length]} Table inserted with current News")
