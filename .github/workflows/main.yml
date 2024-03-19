@@ -32,5 +32,7 @@ jobs:
     - run: npm i -g zcatalyst-cli
     - run: npm install 
       working-directory: ./react-app
+    - name: Set CI environment variable to true
+      run: export CI=true
     - run: catalyst deploy --project React3 --org 799162873 --token m_1004.a1e48fa83c972001406ac5ab703e9fbf.f6d699a427bf9b1f954e72382fbfa519
     
